@@ -1,0 +1,26 @@
+{
+  "name": "toronto-election-tracker",
+  "version": "1.0.0",
+  "description": "Live tracker for the 2026 Toronto mayoral and council results, built on the City of Toronto's unofficial media JSON feeds.",
+  "license": "MIT",
+  "private": true,
+  "type": "commonjs",
+  "bin": {
+    "toronto-election-tracker": "server.js"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "screenshots": "node scripts/screenshots.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "d3": "^7.9.0",
+    "leaflet": "^1.9.4",
+    "motion": "^14.6.0"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.48.0"
+  }
+}

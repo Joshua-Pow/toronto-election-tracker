@@ -1,0 +1,14 @@
+node_modules/
+tools/toaster/node_modules/
+tools/toaster/out/
+data/
+logs/
+screenshots/
+*.log
+*.out
+.access_key
+PUBLIC_URL.txt
+.env
+.env.*
+.DS_Store
+*.tgz
