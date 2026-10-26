@@ -1,0 +1,6 @@
+{
+  "name": "tracker-toaster-build",
+  "private": true,
+  "description": "Builds public/vendor/sonner/toaster.js (React 18 + ReactDOM + Sonner, one self-hosted ESM file). Run: npm ci && node build.mjs && cp out/toaster.js ../../public/vendor/sonner/ && cp node_modules/sonner/dist/styles.css ../../public/vendor/sonner/sonner.css",
+  "dependencies": { "esbuild": "0.28.2", "react": "18.3.1", "react-dom": "18.3.1", "sonner": "2.0.8" }
+}
