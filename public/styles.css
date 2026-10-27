@@ -71,9 +71,8 @@ a { color: inherit; text-underline-offset: 2px; }
 .sample-banner strong { flex: none; background: #1b1a18; color: var(--sample); font-size: var(--fs-cap); font-weight: 650; padding: 3px 8px; border-radius: 4px; letter-spacing: normal; }
 .chip-sample { background: #1b1a18; color: var(--sample); font-size: 0.6875rem; font-weight: 650; letter-spacing: normal; padding: 2px 6px; white-space: nowrap; border-radius: 4px; }
 
-/* Summary header: one compact stack. The card is only as wide as the status line and
-   the two leader rows, so the stats cannot drift to the far edge of the page. */
-.summary { justify-self: start; width: max-content; max-width: 100%; min-width: 0; display: flex; flex-direction: column; align-items: stretch; }
+/* Summary spans the page. The timestamp slip sits under the left edge of the card. */
+.summary { justify-self: stretch; width: 100%; min-width: 0; display: flex; flex-direction: column; align-items: stretch; }
 .status-line { font-variant-numeric: tabular-nums; margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: var(--fs-body); }
 .sep { color: var(--ink-3); }
 #polls-label { color: var(--ink-2); }
@@ -91,20 +90,20 @@ a { color: inherit; text-underline-offset: 2px; }
    name (never wraps) | share, right-aligned | votes, right-aligned */
 .leaders { display: grid; grid-template-columns: minmax(0, max-content) auto auto; justify-content: start; column-gap: var(--s5); row-gap: var(--s1); margin-top: var(--s3); font-variant-numeric: tabular-nums; }
 .leader { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: baseline; border-radius: 6px; padding: 0 var(--s1); margin: 0 calc(-1 * var(--s1)); }
-.leader-name { display: flex; align-items: baseline; gap: var(--s2); min-width: 0; font-size: var(--fs-body); font-weight: 650; align-self: center; }
+.leader-name { display: flex; align-items: center; gap: var(--s2); min-width: 0; font-size: var(--fs-body); font-weight: 650; align-self: center; }
 .leader-name > i, .leader-name > .status-tip, .cand .who > i, .cand .who > .status-tip { align-self: center; }
 .leader-name i { width: 10px; height: 10px; border-radius: 50%; flex: none; box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.12); }
 .leader-name .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .leader-pct { text-align: right; font-size: var(--fs-hero); font-weight: 650; letter-spacing: -0.02em; line-height: 1.15; }
 .leader-votes { text-align: right; color: var(--ink-3); font-size: var(--fs-meta); white-space: nowrap; }
 /* The website arrow matches the name. Social marks stay about one cap high, with a gap between them. */
-.nm-link { display: inline-flex; align-items: baseline; gap: 0.28em; min-width: 0; max-width: 100%; color: inherit; text-decoration: none; }
-.nm-link svg { width: 1em; height: 1em; display: block; flex: none; position: relative; top: 0.12em; }
-.ext-link svg { width: 0.72em; height: 0.72em; display: block; flex: none; position: relative; top: 0.12em; }
+.nm-link { display: inline-flex; align-items: center; gap: 0.28em; min-width: 0; max-width: 100%; color: inherit; text-decoration: none; }
+.nm-link svg { width: 1em; height: 1em; display: block; flex: none; }
+.ext-link svg { width: 0.72em; height: 0.72em; display: block; flex: none; }
 a.nm-link:hover .nm { text-decoration: underline; text-underline-offset: 2px; }
-.ext { display: inline-flex; align-items: baseline; gap: 0.45em; flex: none; }
+.ext { display: inline-flex; align-items: center; gap: 0.45em; flex: none; }
 .ext[hidden] { display: none !important; }
-.ext-link { display: inline-flex; align-items: baseline; justify-content: center; padding: 1px; border-radius: 4px; color: var(--ink); }
+.ext-link { display: inline-flex; align-items: center; justify-content: center; padding: 1px; border-radius: 4px; color: var(--ink); }
 .ext-link:hover { background: #f1eee8; }
 .ext-link:focus-visible, a.nm-link:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 /* Phones: the share column keeps its place on the right; votes drop under the name so names never truncate */
@@ -118,12 +117,14 @@ a.nm-link:hover .nm { text-decoration: underline; text-underline-offset: 2px; }
 .zero-state { margin: var(--s3) 0 0; font-size: var(--fs-body); line-height: 1.5; max-width: 60ch; }
 .zero-state strong { font-weight: 650; }
 
-/* A smaller slip tucked under the results card, so it reads as a layer behind it. */
-.summary-main { position: relative; z-index: 1; }
-.freshness { position: relative; z-index: 0; align-self: end; width: max-content; max-width: calc(100% - 36px); margin: -18px 18px 0; padding: 26px 12px 8px; border-radius: 0 0 12px 12px; background: #e7e3db; box-shadow: 0 10px 18px rgb(0 0 0 / 0.08); display: grid; grid-template-columns: auto auto; gap: 1px var(--s2); align-content: start; justify-content: end; font-size: 0.6875rem; line-height: 1.35; color: var(--ink-3); font-variant-numeric: tabular-nums; }
-.freshness div { display: contents; }
-.freshness dt { text-align: right; }
+/* Solid edge, then one shadow that starts below the border so the two don't darken each other. */
+.summary-main { position: relative; z-index: 1; border: 1px solid var(--line); box-shadow: 0 16px 14px -12px rgb(27 26 24 / 0.28); }
+.freshness { position: relative; z-index: 0; align-self: start; width: max-content; max-width: calc(100% - 28px); margin: -14px 0 0 14px; padding: 22px 12px 8px; border-radius: 0 0 12px 12px; background: #e7e3db; box-shadow: none; display: flex; flex-wrap: wrap; justify-content: flex-start; align-items: baseline; gap: 2px 14px; font-size: 0.6875rem; line-height: 1.35; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.freshness div { display: flex; gap: 4px; align-items: baseline; }
+.freshness dt { text-align: left; }
 .freshness dd { margin: 0; color: var(--ink); font-weight: 500; white-space: nowrap; }
+/* "in 9 s" and "checking now" share one width, so the row does not jump each second. */
+#next-check { display: inline-block; min-width: 8.6em; }
 
 .error-banner { background: #fff4f2; color: #8a1f14; border-radius: var(--r-card); padding: 12px 16px; box-shadow: inset 0 0 0 1px #f2c4bd; }
 
@@ -265,7 +266,6 @@ a.nm-link:hover .nm { text-decoration: underline; text-underline-offset: 2px; }
 @media (max-width: 640px) {
   .status-line .sep { display: none; }
   :root { --gutter: 10px; }
-  .summary { width: 100%; justify-self: stretch; }
   .field.grow input { width: 100%; }
   .field.grow { flex: 1 1 160px; }
 }
@@ -429,7 +429,7 @@ input, select, textarea { font-size: max(16px, 1rem); }
 /* candidate list: units once, in a header row over the number columns */
 .cand-head { display: grid; grid-template-columns: minmax(0, 1fr) 6ch 8ch; gap: 0 var(--s3); font-size: var(--fs-cap); color: var(--ink-3); font-weight: 500; letter-spacing: normal; text-transform: none; margin: var(--s2) 0 var(--s1); }
 .cand-head > span:not(:first-child) { text-align: right; }
-.cand .who { display: inline-flex; align-items: baseline; max-width: 100%; }
+.cand .who { display: inline-flex; align-items: center; max-width: 100%; }
 .cand .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .status-tip { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; margin: 0; padding: 0; border: 0; border-radius: 99px; background: transparent; color: var(--ink-3); cursor: pointer; flex: none; }
 .status-tip:hover, .status-tip:focus-visible, .status-tip[aria-expanded="true"] { color: var(--ink); background: #f1eee8; }
