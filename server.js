@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 // Toronto 2026 live vote tracker server.
 // Fetches the City of Toronto unofficial results feeds server-side (CORS is blocked in the
-// browser), at most once every 60 s, with conditional requests. Keeps a disk-backed history
-// of snapshots for the time-series charts and serves the static frontend.
+// browser), with conditional requests. The City republishes about every 60 s. Once a file is
+// fresh, the next fetch is 1 s after the following publication. Until the file changes, or a
+// publication is missed, the server checks every 20 s. Keeps a disk-backed history of
+// snapshots for the time-series charts and serves the static frontend.
 'use strict';
 
 const http = require('http');
@@ -15,7 +17,10 @@ const { normalize } = require('./lib/normalize');
 
 const PORT = Number(process.env.PORT || 8026);
 const HOST = process.env.HOST || '127.0.0.1'; // loopback only: the public reaches it through the tunnel
-const POLL_MS = Math.max(60000, Number(process.env.POLL_MS || 60000)); // never faster than 60 s
+// City spec: unofficialresult.json is republished about every 60 seconds. seq is that publication time.
+const PERIOD_MS = 60_000;
+const LAG_MS = 1_000;       // ask 1 second after the publication we are waiting for
+const CATCHUP_MS = 20_000;  // stale file, or a publication that did not arrive: look again in 20 s
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const LEAFLET_DIR = path.dirname(require.resolve('leaflet/dist/leaflet.js'));
@@ -81,7 +86,7 @@ async function readCapped(res, max, key) {
 
 async function fetchFeed(key) {
   const m = cache.meta[key] || {};
-  const headers = { 'User-Agent': 'toronto-vote-tracker/1.0 (personal, polls <= 1/min)', Accept: 'application/json' };
+  const headers = { 'User-Agent': 'toronto-vote-tracker/1.0 (personal; 1/min once the file is publishing, 20s until it changes)', Accept: 'application/json' };
   if (m.etag && cache[key]) headers['If-None-Match'] = m.etag;
   if (m.lastModified && cache[key]) headers['If-Modified-Since'] = m.lastModified;
   const ctrl = new AbortController();
@@ -101,8 +106,22 @@ async function fetchFeed(key) {
 }
 
 let polling = false;
+let nextCheckAt = null;
+let pollTimer = null;
+// Fresh file: next publication is one period after seq, and we read it a second later.
+// Stale file (the pre-election copy, or a minute that never arrived): check every 20 s
+// so the first new seq is caught quickly, then lock onto that timestamp.
+function scheduleDelay(now) {
+  if (cache.error) return CATCHUP_MS;
+  const published = publishedAt();
+  if (!published) return CATCHUP_MS;
+  const age = now - published;
+  if (age >= PERIOD_MS) return CATCHUP_MS;
+  // age < 60s, so publishedAt + 60s + 1s is still ahead (at least 1s). Never skip that publication.
+  return Math.max(1500, published + PERIOD_MS + LAG_MS - now);
+}
 async function poll() {
-  if (polling) return; // never two City fetches at once, so never more than one round per POLL_MS
+  if (polling) return; // never two City fetches at once
   polling = true;
   try {
     const [a, w] = [await fetchFeed('all'), await fetchFeed('ward')];
@@ -162,8 +181,8 @@ function liveState() {
     now: Date.now(),
     lastCheckAt: cache.lastCheckAt,
     lastChangeAt: cache.lastChangeAt,
-    nextCheckAt: cache.lastCheckAt ? cache.lastCheckAt + POLL_MS : null,
-    pollMs: POLL_MS,
+    nextCheckAt,
+    pollMs: nextCheckAt ? Math.max(0, nextCheckAt - Date.now()) : CATCHUP_MS,
     error: cache.error,
     source: FEEDS,
     ...(cache.state || { mayor: null, wards: [], publishedAt: null }),
@@ -338,8 +357,8 @@ function handle(req, res) {
       return sendJSON(req, res, body, etag, live ? 'public, max-age=2' : 'public, max-age=10');
     }
     const m = liveBody();
-    // Short shared cache: the City feed changes at most once a minute here; browsers re-ask every 15 s.
-    return sendJSON(req, res, m.body, m.etag, 'public, max-age=10, stale-while-revalidate=20');
+    // Short shared cache. The page asks again just after nextCheckAt, so a long cache would hide a new file.
+    return sendJSON(req, res, m.body, m.etag, 'public, max-age=2');
   }
   serveFile(req, res, url.pathname === '/' ? '/index.html' : url.pathname);
 }
@@ -359,10 +378,20 @@ server.on('connect', (req, socket) => socket.destroy()); // no CONNECT proxying
 // IP logic: none. X-Forwarded-For / CF-Connecting-IP are never read, so a visitor can't spoof anything with them.
 process.on('uncaughtException', (e) => log('uncaught:', e && e.stack || e)); // to the local log only, never to a visitor
 
+function armPoll(delay) {
+  clearTimeout(pollTimer);
+  nextCheckAt = Date.now() + delay;
+  pollTimer = setTimeout(async () => {
+    await poll();
+    const wait = scheduleDelay(Date.now());
+    log(`next City check in ${Math.round(wait / 1000)}s`);
+    armPoll(wait);
+  }, delay);
+}
+
 loadPersisted();
-poll();
-setInterval(poll, POLL_MS);
+armPoll(0);
 if (!/^(127\.|::1$|localhost$)/.test(HOST)) log(`warning: HOST=${HOST} exposes the server beyond this computer. Use HOST=127.0.0.1 with a tunnel.`);
 server.listen(PORT, HOST, () => {
-  log(`Toronto vote tracker on http://localhost:${PORT}  (demo: http://localhost:${PORT}/?demo=1)  polling City feeds every ${POLL_MS / 1000}s${GATE ? '; private-link gate ON' : ''}`);
+  log(`Toronto vote tracker on http://localhost:${PORT}  (demo: http://localhost:${PORT}/?demo=1)  City feed: 1s after each 60s publication, or every 20s until the file changes${GATE ? '; private-link gate ON' : ''}`);
 });

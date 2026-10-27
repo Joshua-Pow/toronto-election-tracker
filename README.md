@@ -22,14 +22,13 @@ Environment variables:
 
 - `PORT` (default `8026`): HTTP port.
 - `HOST` (default `127.0.0.1`): bind address. Loopback only by default; put it behind a tunnel or host to share it.
-- `POLL_MS` (default `60000`, minimum `60000`): how often the server checks the City feeds.
 - `DATA_DIR` (default `./data`): where the last good feed (`latest.json`) and the snapshot history (`history.jsonl`) are kept, so a restart shows results at once and the over-time charts survive restarts.
 - `ACCESS_KEY` (optional, at least 24 characters): turns on a private-link gate. Visitors open `/?key=<key>` once, which sets an HttpOnly cookie and redirects to a clean URL; anything else gets a plain 404. `/healthz` stays open.
 
 ## How it works
 
-- The server fetches the City feeds itself (the browser can't, because of CORS), at most once a minute, with conditional GETs. Viewers only read the server's in-memory copy, so any number of viewers still means one fetch per feed per minute. The tracker is read-only towards the City.
-- The browser polls `/api/state` every 15 seconds and whenever the tab becomes visible.
+- The server fetches the City feeds itself (the browser can't, because of CORS), with conditional GETs. The City publishes about once a minute. Once a publication is in hand, the server reads the file one second after the next one. Until the file starts changing, or a check fails, it looks again every 20 seconds, and it never polls faster than that. Viewers only read the server's in-memory copy, so many viewers still mean one City fetch per check. The tracker is read-only towards the City.
+- The browser asks `/api/state` about 1.2 seconds after the server's next check, waits at most 20 seconds between asks, and loads immediately when the tab becomes visible. `?demo=live` follows the sample clock, about every 4 seconds.
 - History starts when the server first runs. If you start it late, the charts start then; no earlier history is invented.
 - Ward boundaries are the City Wards (25-ward model) from Toronto Open Data, simplified with mapshaper (`public/wards.geojson`). Map tiles are Esri World Light Gray.
 - Front end: plain JavaScript with no build step. Leaflet for the map, D3 for chart scales and shapes, Motion for the number, bar, chart and list animations (`public/fluid.js`), and Sonner for notifications.
