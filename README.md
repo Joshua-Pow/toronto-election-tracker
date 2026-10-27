@@ -29,10 +29,22 @@ Environment variables:
 
 - The server fetches the City feeds itself (the browser can't, because of CORS), with conditional GETs. The City publishes about once a minute. Once a publication is in hand, the server reads the file one second after the next one. Until the file starts changing, or a check fails, it looks again every 20 seconds, and it never polls faster than that. Viewers only read the server's in-memory copy, so many viewers still mean one City fetch per check. The tracker is read-only towards the City.
 - The browser asks `/api/state` about 1.2 seconds after the server's next check, waits at most 20 seconds between asks, and loads immediately when the tab becomes visible. `?demo=live` follows the sample clock, about every 4 seconds.
-- History starts when the server first runs. If you start it late, the charts start then; no earlier history is invented.
+- Local history starts when the server first runs and is kept in `data/history.jsonl`. If you start it late, the charts start then; no earlier history is invented. The deployed Worker has its own database, described under Deploy.
 - Ward boundaries are the City Wards (25-ward model) from Toronto Open Data, simplified with mapshaper (`public/wards.geojson`). Map tiles are Esri World Light Gray.
-- Front end: plain JavaScript with no build step. Leaflet for the map, D3 for chart scales and shapes, Motion for the number, bar, chart and list animations (`public/fluid.js`), and Sonner for notifications.
+- Front end: plain JavaScript. Locally the Node server serves `public/` directly. Leaflet for the map, D3 for chart scales and shapes, Motion for the number, bar, chart and list animations (`public/fluid.js`), and Sonner for notifications. Production is the Worker build below.
 - Layout: on desktop the map fills at least the screen height with the candidate list beside it; the top 3 candidates stay pinned and the rest scroll. Vote share and lead charts sit side by side underneath. On phones everything stacks in one column.
+
+## Deploy
+
+Production is one Cloudflare Worker, `toronto-tracker`. The page, CSS, map and scripts are static assets. One SQLite Durable Object polls the City on the same schedule as the local server and stores the latest results plus the chart history. Visitors only read `/api/state`. The free plan does not bill past its request allowance; extra `/api/state` calls fail instead of charging. Static files do not spend that allowance.
+
+```bash
+npm run deploy
+```
+
+That copies `public/` and the vendor libraries into the asset directory, writes `worker/history-seed.json` from `data/history.jsonl`, builds the Worker, and deploys it. On the next request the Durable Object copies in any seeded snapshots it does not already have, so a database that started empty still shows the evening recorded locally. A snapshot the Worker stored itself wins when the timestamps match. After that, new City updates are appended in the Worker database. `data/` is not served as part of the site.
+
+The public address uses the account's `workers.dev` subdomain. Wrangler prints it at the end of the deploy.
 
 ## Demo mode
 
