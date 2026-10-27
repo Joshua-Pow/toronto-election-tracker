@@ -3,12 +3,12 @@
 // Runtime types generated with workerd@1.20261023.1 2026-10-26 nodejs_compat
 interface __BaseEnv_Env {
 	ASSETS: Fetcher;
-	CITY_FEED: DurableObjectNamespace<import("./worker/index").CityFeed>;
+	CITY_FEED: DurableObjectNamespace<import("./worker/index").CityArchive>;
 }
 declare namespace Cloudflare {
 	interface GlobalProps {
 		mainModule: typeof import("./worker/index");
-		durableNamespaces: "CityFeed";
+		durableNamespaces: "CityArchive";
 	}
 	interface Env extends __BaseEnv_Env {}
 }

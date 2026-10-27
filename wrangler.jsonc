@@ -21,7 +21,13 @@
     "run_worker_first": ["/api/*", "/healthz"],
   },
   "durable_objects": {
-    "bindings": [{ "name": "CITY_FEED", "class_name": "CityFeed" }],
+    "bindings": [{ "name": "CITY_FEED", "class_name": "CityArchive" }],
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["CityFeed"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["CityFeed"] },
+    // The original object stays awake on its alarm, so a normal deploy never
+    // restarts it. Renaming moves the same database onto the new code, which
+    // then copies in the local history.
+    { "tag": "v2", "renamed_classes": [{ "from": "CityFeed", "to": "CityArchive" }] },
+  ],
 }

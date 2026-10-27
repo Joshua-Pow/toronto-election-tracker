@@ -16,6 +16,31 @@ function valueAt(pts, t) {
   const u = b.t === a.t ? 0 : (t - a.t) / (b.t - a.t);
   return a.v + (b.v - a.v) * u;
 }
+// The top label sits above its dot and the bottom label sits below its own,
+// so two close lines don't drop both captions into the gap between them.
+function placeEndLabels(ends, top, bottom) {
+  const GAP = 18;
+  const PAD = 16;
+  ends.sort((a, b) => a.yy - b.yy);
+  if (!ends.length) return;
+  if (ends.length === 1) {
+    ends[0].ly = ends[0].yy - PAD < top + 8 ? ends[0].yy + PAD : ends[0].yy - PAD;
+    return;
+  }
+  ends.forEach((e, i) => { e.ly = i === ends.length - 1 ? e.yy + PAD : e.yy - PAD; });
+  if (ends[0].ly < top + 8) ends[0].ly = top + 8;
+  for (let i = 1; i < ends.length; i++) {
+    if (ends[i].ly - ends[i - 1].ly < GAP) ends[i].ly = ends[i - 1].ly + GAP;
+  }
+  const overflow = ends[ends.length - 1].ly - (bottom - 4);
+  if (overflow > 0) {
+    for (const e of ends) e.ly -= overflow;
+    if (ends[0].ly < top + 8) ends[0].ly = top + 8;
+    for (let i = 1; i < ends.length; i++) {
+      if (ends[i].ly - ends[i - 1].ly < GAP) ends[i].ly = ends[i - 1].ly + GAP;
+    }
+  }
+}
 // Sit the dot on the drawn curve, which is monotone in x.
 function pointAtX(path, x) {
   const len = path.getTotalLength();
@@ -197,12 +222,12 @@ window.TweenChart = class TweenChart {
     this.gDots.selectAll('circle').data(series, (d) => d.key).join('circle').attr('r', 3.2)
       .attr('fill', (d) => d.color).attr('opacity', (d) => d.o)
       .attr('cx', (d) => x(d.pts.at(-1).t)).attr('cy', (d) => y(d.pts.at(-1).v));
-    // end labels, nudged apart so two close lines stay readable
-    const ends = series.map((d) => ({ key: d.key, color: d.color, o: d.o, v: d.pts.at(-1).v, xx: x(d.pts.at(-1).t), yy: y(d.pts.at(-1).v) })).sort((a, b) => a.yy - b.yy);
-    for (let i = 1; i < ends.length; i++) if (ends[i].yy - ends[i - 1].yy < 14) ends[i].yy = ends[i - 1].yy + 14;
+    // End labels face away from each other. Putting both in the gap stacks them on one spot.
+    const ends = series.map((d) => ({ key: d.key, color: d.color, o: d.o, v: d.pts.at(-1).v, xx: x(d.pts.at(-1).t), yy: y(d.pts.at(-1).v) }));
+    placeEndLabels(ends, T, H - B);
     this.gEnd.attr('opacity', this.scrub.on ? 0 : 1);
-    this.gEnd.selectAll('text').data(ends, (d) => d.key).join('text').attr('text-anchor', 'end').attr('x', (d) => d.xx - 10).attr('dy', '0')
-      .attr('y', (d) => (d.yy - 12 < T + 8 ? d.yy + 14 : d.yy - 12)).attr('fill', (d) => d.color).attr('opacity', (d) => d.o).text((d) => this.o.endFmt(d.v, d.key));
+    this.gEnd.selectAll('text').data(ends, (d) => d.key).join('text').attr('text-anchor', 'end').attr('x', (d) => d.xx - 10).attr('dy', '0.32em')
+      .attr('y', (d) => d.ly).attr('fill', (d) => d.color).attr('opacity', (d) => d.o).text((d) => this.o.endFmt(d.v, d.key));
     if (this.hit) {
       this.hit.attr('x', 0).attr('y', 0).attr('width', W).attr('height', H);
       this.hit.raise();

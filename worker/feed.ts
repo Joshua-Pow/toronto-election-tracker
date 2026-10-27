@@ -1,5 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import normalizeMod from "../lib/normalize.js";
+import localHistory from "./history-seed.json";
+import { mergeHistory, seedRevision } from "./history.js";
 import { CATCHUP_MS, scheduleDelay } from "./schedule.js";
 
 const normalize = normalizeMod.normalize as (
@@ -108,7 +110,7 @@ async function readCapped(res: Response, max: number, key: FeedKey): Promise<str
   return new TextDecoder().decode(buf);
 }
 
-export class CityFeed extends DurableObject<Env> {
+export class CityArchive extends DurableObject<Env> {
   private meta = new Map<string, string>();
   private history: Snap[] = [];
   private historyLoaded = false;
@@ -138,6 +140,7 @@ export class CityFeed extends DurableObject<Env> {
       return this.demo(query);
     }
     await this.ensureStarted();
+    if (this.importLocalHistory()) await this.refreshLiveBody();
     return this.livePayload();
   }
 
@@ -152,6 +155,7 @@ export class CityFeed extends DurableObject<Env> {
 
   async alarm(): Promise<void> {
     try {
+      this.importLocalHistory();
       await this.poll();
       this.putMeta("booted", "1");
     } catch (error) {
@@ -376,6 +380,27 @@ export class CityFeed extends DurableObject<Env> {
     } catch {
       this.state = null;
     }
+  }
+
+  private importLocalHistory(): boolean {
+    this.ensureHistory();
+    const seed = localHistory as Snap[];
+    const rev = seedRevision(seed);
+    if (this.meta.get("history_seed") === rev) return false;
+    const merged = mergeHistory(this.history, seed);
+    const changed =
+      merged.length !== this.history.length ||
+      merged.some((snap, i) => snap.t !== this.history[i]?.t);
+    this.history = merged;
+    if (changed) {
+      this.ctx.storage.sql.exec("DELETE FROM history");
+      for (const snap of this.history) {
+        this.ctx.storage.sql.exec("INSERT INTO history (snap) VALUES (?)", JSON.stringify(snap));
+      }
+    }
+    this.putMeta("history_seed", rev);
+    this.putMeta("history_len", String(this.history.length));
+    return changed;
   }
 
   private ensureHistory(): void {

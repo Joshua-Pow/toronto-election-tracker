@@ -54,6 +54,21 @@ export function stageTrackerAssets() {
 	fs.copyFileSync(path.join(root, "node_modules/motion/dist/motion.js"), path.join(out, "vendor/motion/motion.js"));
 
 	fs.writeFileSync(path.join(out, "_headers"), HEADERS);
+	writeHistorySeed();
+}
+
+// The Worker's database starts empty. Bundle the local history file so the next
+// request can copy the earlier snapshots in. Missing file ships an empty seed.
+function writeHistorySeed() {
+	const src = path.join(root, "data", "history.jsonl");
+	const dest = path.join(root, "worker", "history-seed.json");
+	let snaps = [];
+	if (fs.existsSync(src)) {
+		snaps = fs.readFileSync(src, "utf8").split("\n").filter(Boolean).flatMap((line) => {
+			try { return [JSON.parse(line)]; } catch { return []; }
+		});
+	}
+	fs.writeFileSync(dest, JSON.stringify(snaps));
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) stageTrackerAssets();

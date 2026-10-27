@@ -1,4 +1,4 @@
-import { CityFeed, type ReadQuery, type ReadResult } from "./feed.js";
+import { CityArchive, type ReadQuery, type ReadResult } from "./feed.js";
 
 const SECURITY: Record<string, string> = {
   "X-Content-Type-Options": "nosniff",
@@ -57,7 +57,7 @@ async function jsonResult(
   return response;
 }
 
-export { CityFeed };
+export { CityArchive };
 
 export default {
   async fetch(request, env, ctx): Promise<Response> {
