@@ -1,19 +1,18 @@
 {
   "name": "toronto-election-tracker",
   "version": "1.0.0",
+  "private": true,
   "description": "Live tracker for the 2026 Toronto mayoral and council results, built on the City of Toronto's unofficial media JSON feeds.",
   "license": "MIT",
-  "private": true,
-  "type": "commonjs",
   "bin": {
     "toronto-election-tracker": "server.js"
   },
+  "type": "commonjs",
   "scripts": {
     "start": "node server.js",
-    "screenshots": "node scripts/screenshots.js"
-  },
-  "engines": {
-    "node": ">=18"
+    "screenshots": "node scripts/screenshots.js",
+    "prepare": "vp config",
+    "deploy": "node scripts/stage-assets.mjs && vp build && wrangler deploy"
   },
   "dependencies": {
     "d3": "^7.9.0",
@@ -21,6 +20,15 @@
     "motion": "^14.6.0"
   },
   "devDependencies": {
-    "playwright-core": "^1.48.0"
+    "@cloudflare/vite-plugin": "^1.65.0",
+    "playwright-core": "^1.48.0",
+    "vite-plus": "1.4.0",
+    "wrangler": "^4.153.0"
+  },
+  "overrides": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.4.0"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }

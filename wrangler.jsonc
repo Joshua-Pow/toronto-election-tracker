@@ -1,0 +1,27 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "toronto-tracker",
+  "main": "./worker/index.ts",
+  "compatibility_date": "2026-10-26",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "upload_source_maps": true,
+  // One SQLite Durable Object polls the City. Alarms can fire 1s after seq and
+  // every 20s when the file is stale. Cron is minute-resolution. KV's free plan
+  // allows 1,000 writes/day, which is too small for a 20s catch-up or a
+  // once-a-minute election night. SQLite Durable Objects are on the Workers free plan.
+  "observability": {
+    "enabled": true,
+    "logs": { "enabled": true, "head_sampling_rate": 1 },
+    "traces": { "enabled": true, "head_sampling_rate": 1 },
+  },
+  "assets": {
+    "directory": "./tracker-assets",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*", "/healthz"],
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "CITY_FEED", "class_name": "CityFeed" }],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["CityFeed"] }],
+}

@@ -12,3 +12,7 @@ PUBLIC_URL.txt
 .env.*
 .DS_Store
 *.tgz
+dist/
+.wrangler/
+.cloudflare/
+tracker-assets/
