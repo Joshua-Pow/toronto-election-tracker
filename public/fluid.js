@@ -33,11 +33,11 @@ window.Fluid = (() => {
   // A number that rolls to its value. Sighted users see the roll; screen readers get the final text at once.
   // markup: <span class="tw"><span class="tw-v" aria-hidden="true"></span><span class="visually-hidden"></span></span>
   const NUM_HTML = '<span class="tw"><span class="tw-v" aria-hidden="true"></span><span class="visually-hidden"></span></span>';
-  function setNum(wrap, value, fmt, { instant } = {}) {
+  function setNum(wrap, value, fmt, { instant, tier } = {}) {
     const vis = wrap.firstElementChild, sr = wrap.lastElementChild;
     sr.textContent = value == null ? 'none' : fmt(value);
     if (value == null) { tweenNum(wrap, 'n', NaN, 'instant', () => {}); vis.textContent = '…'; return; }
-    tweenNum(wrap, 'n', value, instant ? 'instant' : 'data', (v) => { vis.textContent = fmt(v); });
+    tweenNum(wrap, 'n', value, instant ? 'instant' : (tier || 'data'), (v) => { vis.textContent = fmt(v); });
   }
 
   // scaleX bar (transform only) that springs to its new fraction.

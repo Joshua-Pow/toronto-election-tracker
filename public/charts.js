@@ -5,10 +5,33 @@
 //   - existing points glide to their new positions; new points grow out of the previous endpoint
 //   - end-of-line value labels roll to their new numbers
 // Reduced motion: every update lands immediately.
+function valueAt(pts, t) {
+  if (!pts.length) return 0;
+  if (t <= pts[0].t) return pts[0].v;
+  const last = pts[pts.length - 1];
+  if (t >= last.t) return last.v;
+  let i = 1;
+  while (i < pts.length && pts[i].t < t) i++;
+  const a = pts[i - 1], b = pts[i] || a;
+  const u = b.t === a.t ? 0 : (t - a.t) / (b.t - a.t);
+  return a.v + (b.v - a.v) * u;
+}
+// Sit the dot on the drawn curve, which is monotone in x.
+function pointAtX(path, x) {
+  const len = path.getTotalLength();
+  if (!len) return null;
+  let lo = 0, hi = len;
+  for (let i = 0; i < 14; i++) {
+    const mid = (lo + hi) / 2;
+    if (path.getPointAtLength(mid).x < x) lo = mid;
+    else hi = mid;
+  }
+  return path.getPointAtLength((lo + hi) / 2);
+}
 window.TweenChart = class TweenChart {
   constructor(el, o) {
     this.el = el;
-    this.o = Object.assign({ W: 320, H: 158, L: 34, R: 50, T: 10, B: 22, yFmt: (v) => String(v), endFmt: (v) => v.toFixed(1), xFmt: (t) => String(t) }, o);
+    this.o = Object.assign({ W: 320, H: 158, L: 30, R: 12, T: 10, B: 22, yFmt: (v) => String(v), endFmt: (v) => v.toFixed(1), xFmt: (t) => String(t) }, o);
     const ns = 'http://www.w3.org/2000/svg';
     el.innerHTML = '';
     const svg = document.createElementNS(ns, 'svg');
@@ -29,11 +52,24 @@ window.TweenChart = class TweenChart {
     this.zero = this.o.zero ? this.svg.append('line').attr('class', 'zero-line') : null;
     this.gLines = this.svg.append('g');
     this.gDots = this.svg.append('g');
+    this.gScrub = this.svg.append('g').attr('class', 'scrub').style('display', 'none').style('pointer-events', 'none');
+    this.scrubLine = this.gScrub.append('line').attr('class', 'scrub-line');
+    this.gScrubDots = this.gScrub.append('g');
     this.gEnd = this.svg.append('g').attr('class', 'end-labels');
     this.cur = null;     // what is on screen right now
     this.anim = null;
+    this.scrub = { on: false, x: null, anim: null, stick: false };
     this.yTicks = new Map(); // value -> {el, o, from, to}
     this.xTicks = new Map();
+    this.readout = document.createElement('div');
+    this.readout.className = 'chart-readout';
+    this.readout.hidden = true;
+    this.readoutTime = document.createElement('div');
+    this.readoutTime.className = 'chart-readout-time';
+    this.readoutRows = document.createElement('div');
+    this.readout.append(this.readoutTime, this.readoutRows);
+    el.appendChild(this.readout);
+    this.bindPointer();
   }
 
   // data: { series: [{ key, color, points: [{t, v}] }], y: [min, max], yTicks: [..], label, bands: [top, bottom] }
@@ -138,15 +174,20 @@ window.TweenChart = class TweenChart {
       tk.el.setAttribute('transform', `translate(0,${yy.toFixed(2)})`);
       tk.el.setAttribute('opacity', (yy < T - 2 || yy > H - B + 2) ? 0 : tk.o.toFixed(3));
     }
-    for (const [v, tk] of this.xTicks) {
+    const xEntries = [...this.xTicks.entries()].sort((a, b) => a[0] - b[0]);
+    let prevLabel = -1e9;
+    for (const [v, tk] of xEntries) {
       if (!tk.el) {
         tk.el = this.gX.append('text').attr('y', H - 5).attr('text-anchor', 'middle').text(this.o.xFmt(v)).node();
       }
       tk.o = tk.from + (tk.to - tk.from) * t;
       const xx = x(v);
+      const placed = Math.max(L + 14, Math.min(W - R - 14, xx));
+      const room = placed - prevLabel >= 52;
+      if (room) prevLabel = placed;
       tk.el.setAttribute('y', H - 5);
-      tk.el.setAttribute('x', Math.max(L + 14, Math.min(W - R - 14, xx)).toFixed(2));
-      tk.el.setAttribute('opacity', tk.o.toFixed(3));
+      tk.el.setAttribute('x', placed.toFixed(2));
+      tk.el.setAttribute('opacity', room ? tk.o.toFixed(3) : 0);
     }
     if (this.zero) this.zero.attr('x1', L).attr('x2', W - R).attr('y1', y(0)).attr('y2', y(0));
     const line = d3.line().x((p) => x(p.t)).y((p) => y(p.v)).curve(d3.curveMonotoneX);
@@ -157,10 +198,129 @@ window.TweenChart = class TweenChart {
       .attr('fill', (d) => d.color).attr('opacity', (d) => d.o)
       .attr('cx', (d) => x(d.pts.at(-1).t)).attr('cy', (d) => y(d.pts.at(-1).v));
     // end labels, nudged apart so two close lines stay readable
-    const ends = series.map((d) => ({ key: d.key, color: d.color, o: d.o, v: d.pts.at(-1).v, yy: y(d.pts.at(-1).v) })).sort((a, b) => a.yy - b.yy);
-    for (let i = 1; i < ends.length; i++) if (ends[i].yy - ends[i - 1].yy < 11) ends[i].yy = ends[i - 1].yy + 11;
-    this.gEnd.selectAll('text').data(ends, (d) => d.key).join('text').attr('x', W - R + 7).attr('dy', '0.32em')
-      .attr('y', (d) => d.yy).attr('fill', (d) => d.color).attr('opacity', (d) => d.o).text((d) => this.o.endFmt(d.v, d.key));
+    const ends = series.map((d) => ({ key: d.key, color: d.color, o: d.o, v: d.pts.at(-1).v, xx: x(d.pts.at(-1).t), yy: y(d.pts.at(-1).v) })).sort((a, b) => a.yy - b.yy);
+    for (let i = 1; i < ends.length; i++) if (ends[i].yy - ends[i - 1].yy < 14) ends[i].yy = ends[i - 1].yy + 14;
+    this.gEnd.attr('opacity', this.scrub.on ? 0 : 1);
+    this.gEnd.selectAll('text').data(ends, (d) => d.key).join('text').attr('text-anchor', 'end').attr('x', (d) => d.xx - 10).attr('dy', '0')
+      .attr('y', (d) => (d.yy - 12 < T + 8 ? d.yy + 14 : d.yy - 12)).attr('fill', (d) => d.color).attr('opacity', (d) => d.o).text((d) => this.o.endFmt(d.v, d.key));
+    if (this.hit) {
+      this.hit.attr('x', 0).attr('y', 0).attr('width', W).attr('height', H);
+      this.hit.raise();
+      this.gScrub.raise();
+    }
+    if (this.scrub.on) this.paintScrub();
+  }
+
+  // A full-size hit target, because an SVG only receives the pointer where something is painted.
+  // The guide stays under the cursor. A spring here never catches a moving pointer.
+  bindPointer() {
+    const svg = this.svgEl;
+    svg.tabIndex = 0;
+    svg.setAttribute('role', 'group');
+    svg.setAttribute('aria-roledescription', 'chart');
+    this.hit = this.svg.append('rect').attr('class', 'chart-hit').attr('fill', 'transparent');
+    const localX = (e) => {
+      const r = svg.getBoundingClientRect();
+      if (!r.width) return this.o.L;
+      return ((e.clientX - r.left) / r.width) * this.o.W;
+    };
+    const slide = (e) => {
+      if (e.pointerType === 'touch' && !this.scrub.touching) return;
+      this.place(localX(e));
+    };
+    this.hit.on('pointerenter', slide);
+    this.hit.on('pointerdown', (e) => { this.scrub.touching = true; this.scrub.stick = e.pointerType !== 'mouse'; slide(e); });
+    this.hit.on('pointermove', slide);
+    this.hit.on('pointerup', () => { this.scrub.touching = false; });
+    this.hit.on('pointerleave', () => { this.scrub.touching = false; if (!this.scrub.stick) this.clearScrub(); });
+    svg.addEventListener('focus', () => { if (this.cur) this.place(this.xScale(this.cur)(this.cur.x[1])); });
+    svg.addEventListener('blur', () => this.clearScrub());
+    svg.addEventListener('keydown', (e) => this.onKey(e));
+    document.addEventListener('pointerdown', (e) => { if (!this.el.contains(e.target)) this.clearScrub(); });
+  }
+
+  xScale(c) {
+    const { L, R, W } = this.o;
+    return d3.scaleLinear().domain(c.x[0] === c.x[1] ? [c.x[0] - 1, c.x[1] + 1] : c.x).range([L, W - R]);
+  }
+
+  place(px) {
+    if (!this.cur) return;
+    const [a, b] = this.xScale(this.cur).range();
+    this.scrub.on = true;
+    this.scrub.x = Math.max(a, Math.min(b, px));
+    this.paintScrub();
+  }
+
+  clearScrub() {
+    this.scrub.on = false;
+    this.scrub.stick = false;
+    this.scrub.touching = false;
+    this.scrub.x = null;
+    this.gScrub.style('display', 'none');
+    this.gEnd.attr('opacity', 1);
+    this.readout.hidden = true;
+  }
+
+  paintScrub() {
+    const c = this.cur;
+    if (!c || this.scrub.x == null) return;
+    const { H, T, B } = this.o;
+    const x = this.xScale(c);
+    const y = d3.scaleLinear().domain(c.y).range([H - B, T]);
+    const px = Math.max(x.range()[0], Math.min(x.range()[1], this.scrub.x));
+    const t = x.invert(px);
+    this.gScrub.style('display', null);
+    this.scrubLine.attr('x1', px).attr('x2', px).attr('y1', T).attr('y2', H - B);
+    const rows = [...c.series].filter(([, s]) => s.o > 0.35).map(([key, s]) => {
+      const v = valueAt(s.pts, t);
+      const path = this.gLines.selectAll('path.series').filter((d) => d.key === key).node();
+      const on = path && pointAtX(path, px);
+      return { key, color: s.color, v, cy: on ? on.y : y(v) };
+    });
+    this.gScrubDots.selectAll('circle').data(rows, (d) => d.key).join('circle')
+      .attr('r', 4).attr('fill', (d) => d.color).attr('stroke', '#fff').attr('stroke-width', 2)
+      .attr('cx', px).attr('cy', (d) => d.cy);
+    this.gEnd.attr('opacity', 0);
+    this.readout.hidden = false;
+    this.readoutTime.textContent = (this.o.tipFmt || this.o.xFmt)(t);
+    const have = new Map([...this.readoutRows.children].map((el) => [el.dataset.key, el]));
+    const keep = new Set();
+    for (const row of rows) {
+      keep.add(row.key);
+      let el = have.get(row.key);
+      if (!el) {
+        el = document.createElement('div');
+        el.className = 'chart-readout-row';
+        el.dataset.key = row.key;
+        const dot = document.createElement('i');
+        const label = document.createElement('span');
+        el.append(dot, label);
+        this.readoutRows.append(el);
+      }
+      el.firstChild.style.background = row.color;
+      el.lastChild.textContent = (this.o.readFmt || this.o.endFmt)(row.v, row.key);
+    }
+    for (const [key, el] of have) if (!keep.has(key)) el.remove();
+    const box = this.readout.offsetWidth || 96;
+    let left = px + 12;
+    if (left + box > this.o.W - 4) left = Math.max(4, px - box - 12);
+    this.readout.style.left = left + 'px';
+  }
+
+  onKey(e) {
+    if (!this.cur || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'Home' && e.key !== 'End')) return;
+    e.preventDefault();
+    const c = this.cur;
+    const x = this.xScale(c);
+    const times = [...new Set([...c.series.values()].flatMap((s) => s.pts.map((p) => p.t)))].sort((a, b) => a - b);
+    const curT = this.scrub.x == null ? c.x[1] : x.invert(this.scrub.x);
+    let toT = curT;
+    if (e.key === 'Home') toT = c.x[0];
+    else if (e.key === 'End') toT = c.x[1];
+    else if (e.key === 'ArrowRight') toT = times.find((tm) => tm > curT + 1) ?? c.x[1];
+    else toT = [...times].reverse().find((tm) => tm < curT - 1) ?? c.x[0];
+    this.place(x(toT));
   }
 
   drawBands(bands) {
@@ -168,7 +328,7 @@ window.TweenChart = class TweenChart {
     const [top, bottom] = bands;
     const { L, T, H, B } = this.o;
     this.gBands.selectAll('text').data([top, bottom]).join('text')
-      .attr('x', this.o.W - this.o.R - 2).attr('text-anchor', 'end').attr('y', (d, i) => (i ? H - B - 5 : T + 9))
+      .attr('x', L + 4).attr('text-anchor', 'start').attr('y', (d, i) => (i ? H - B - 5 : T + 11))
       .attr('fill', (d) => d.color).attr('class', 'band-label').text((d) => d.text);
   }
 
@@ -186,6 +346,7 @@ window.TweenChart = class TweenChart {
 
   empty(msg) {
     if (this.anim) this.anim.stop();
+    this.clearScrub();
     this.cur = null; this.anim = null; this.bands = null;
     for (const m of [this.yTicks, this.xTicks]) { for (const tk of m.values()) if (tk.el) tk.el.remove(); m.clear(); }
     this.gLines.selectAll('*').remove(); this.gDots.selectAll('*').remove(); this.gEnd.selectAll('*').remove(); this.gBands.selectAll('*').remove();

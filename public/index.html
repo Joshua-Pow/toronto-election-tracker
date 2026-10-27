@@ -7,7 +7,7 @@
   <meta name="color-scheme" content="light">
   <link rel="preconnect" href="https://server.arcgisonline.com" crossorigin>
   <title>Toronto 2026 election: live mayoral results</title>
-  <meta name="description" content="Live unofficial results for the 2026 Toronto mayoral and council races, from the City of Toronto's media results feed.">
+  <meta name="description" content="Live unofficial results for the 2026 Toronto mayoral and councillor races, from the City of Toronto's media results feed.">
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
   <link rel="stylesheet" href="/vendor/sonner/sonner.css">
   <link rel="stylesheet" href="/styles.css">
@@ -26,8 +26,8 @@
   </div>
 
   <main class="page reveal-product">
-    <header class="card summary" aria-labelledby="page-title">
-      <div class="summary-main">
+    <header class="summary" aria-labelledby="page-title">
+      <div class="card summary-main">
         <h1 id="page-title" class="visually-hidden">Toronto 2026 mayoral election, live results</h1>
         <p class="status-line">
           <span id="status-dot" class="dot" aria-hidden="true"></span>
@@ -53,8 +53,7 @@
     <div class="grid">
       <section class="card map-card" aria-labelledby="map-heading">
         <div class="card-head">
-          <h2 id="map-heading">Mayor: who leads each ward</h2>
-          <p class="hint"><span class="fine-only">Hover a ward for its numbers, or click it for details below the map. Click a table row to find its ward here.</span><span class="touch-only">Tap a ward for its numbers. Use two fingers to move or zoom the map; one finger scrolls the page.</span></p>
+          <h2 id="map-heading">Who leads each ward</h2>
         </div>
         <div id="map" class="map" role="region" aria-label="Map of Toronto's 25 wards coloured by the leading mayoral candidate. The ward table below lists the same results."></div>
         <div id="ward-panel" class="ward-panel" hidden>
@@ -75,7 +74,7 @@
             <ul id="legend-leaders" class="legend-list"></ul>
           </div>
           <div>
-            <h3>Leader's share of the ward's votes</h3>
+            <h3>Share</h3>
             <ul class="legend-list">
               <li><span class="sw sw-share o1"></span>Under 40%</li>
               <li><span class="sw sw-share o2"></span>40 to 50%</li>
@@ -87,7 +86,7 @@
       </section>
 
       <section class="card cand-card" aria-labelledby="cands-heading">
-        <h2 id="cands-heading">Mayoral candidates</h2>
+        <h2 id="cands-heading">Candidates</h2>
         <div class="cand-head" aria-hidden="true"><span id="cands-count">Candidate</span><span>Share</span><span>Votes</span></div>
         <ol id="cand-top" class="cand-list cand-top"></ol>
         <div id="cand-scroll" class="cand-scroll" role="region" aria-label="Other mayoral candidates, scrollable list" tabindex="0">
@@ -98,13 +97,11 @@
 
     <div class="charts">
       <section class="card chart-card" aria-labelledby="share-heading">
-        <h2 id="share-heading">Vote share over time</h2>
-        <p id="share-note" class="hint chart-note">Share of votes counted so far.</p>
+        <h2 id="share-heading">Vote share</h2>
         <div id="share-chart" class="chart"></div>
       </section>
       <section class="card chart-card" aria-labelledby="margin-heading">
-        <h2 id="margin-heading">Lead over time</h2>
-        <p id="margin-note" class="hint chart-note">Gap between the top two, in percentage points. Not a projection.</p>
+        <h2 id="margin-heading">Lead</h2>
         <div id="margin-chart" class="chart"></div>
       </section>
     </div>
@@ -150,7 +147,7 @@
     </section>
 
     <footer class="foot">
-      <p>Unofficial results from the <a href="https://www.toronto.ca/city-government/elections/election-results-reports/election-results/live-results-information-for-media/">City of Toronto media results feed</a>, checked at most once a minute. Official results are certified by the City Clerk after election night. Ward boundaries: <a href="https://open.toronto.ca/dataset/city-wards/">Toronto Open Data, City Wards</a>. Map tiles © Esri, HERE, Garmin, © OpenStreetMap contributors. All times Eastern (ET).</p>
+      <p>Unofficial results from the <a href="https://www.toronto.ca/city-government/elections/election-results-reports/election-results/live-results-information-for-media/">City of Toronto media results feed</a>. The City publishes about once a minute. This page reads the file one second after each publication, and every 20 seconds until the file starts changing. Official results are certified by the City Clerk after election night. Ward boundaries: <a href="https://open.toronto.ca/dataset/city-wards/">Toronto Open Data, City Wards</a>. Map tiles © Esri, HERE, Garmin, © OpenStreetMap contributors. All times Eastern (ET).</p>
       <details class="more">
         <summary class="btn btn-ghost">What do these numbers mean?</summary>
         <ul>
@@ -173,6 +170,7 @@
   <script defer src="/vendor/d3/d3.min.js"></script>
   <script defer src="/fluid.js"></script>
   <script defer src="/charts.js"></script>
+  <script defer src="/mayors.js"></script>
   <script defer src="/app.js"></script>
 </body>
 </html>

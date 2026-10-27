@@ -4,9 +4,12 @@
   const DEMO = params.get('demo') === '1' || params.get('demo') === 'live';
   const SIM = DEMO && (params.get('demo') === 'live' || params.get('live') === '1') && !params.has('p');
   const API = '/api/state' + (DEMO ? '?demo=1' + (SIM ? '&live=1' : '') + (params.has('p') ? '&p=' + encodeURIComponent(params.get('p')) : '') : '');
-  // The browser asks our server; the server asks the City at most once a minute.
-  // Simulated-live sample mode steps every 4 s so the motion can be watched.
-  const REFRESH_MS = SIM ? 4000 : 15000;
+  // The browser asks our server. The server reads the City file 1s after each publication
+  // (about once a minute) and every 20s until that file changes. Wake at most every 20s,
+  // and when the server's next check is sooner, ask about 1.2s after nextCheckAt.
+  // ?demo=live follows the sample nextCheckAt (about every 4s).
+  const CLIENT_CAP_MS = 20000;
+  const CLIENT_LAG_MS = 1200;
   const { setNum, setBar, setText, reorder, NUM_HTML } = window.Fluid;
   const TZ = 'America/Toronto';
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -15,6 +18,7 @@
   const fmtInt = new Intl.NumberFormat('en-CA');
   const fmtTime = new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: 'numeric', minute: '2-digit', second: '2-digit' });
   const fmtHM = new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: 'numeric', minute: '2-digit' });
+  const fmtHMS = new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: 'numeric', minute: '2-digit', second: '2-digit' });
   const fmtDay = new Intl.DateTimeFormat('en-US', { timeZone: TZ, month: 'short', day: 'numeric' });
   const etParts = (t) => Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23' }).formatToParts(t).map((p) => [p.type, p.value]));
   const et = (t, withDay) => {
@@ -26,6 +30,215 @@
   // DOM helper: feed strings (candidate and ward names) only ever go in as text, never as HTML.
   const h = (tag, cls, text) => { const el = document.createElement(tag); if (cls) el.className = cls; if (text != null) el.textContent = text; return el; };
   const dot = (bg) => { const i = document.createElement('i'); i.style.background = bg; return i; };
+  // Campaign and social links live in /mayors.js (City Clerk candidate list). Feed names stay text.
+  function mayorProfile(name) {
+    const book = window.MAYOR_PROFILES && window.MAYOR_PROFILES.byName;
+    const p = book && book[name];
+    return p && p.office === 'Mayor' && Array.isArray(p.links) ? p : null;
+  }
+  function safeLinkHref(href) {
+    try {
+      const u = new URL(href);
+      if ((u.protocol !== 'https:' && u.protocol !== 'http:') || u.username || u.password) return '';
+      return u.href;
+    } catch { return ''; }
+  }
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  // Brand marks are the Simple Icons paths (simpleicons.org, CC0), filled with the text colour.
+  // CSS sizes them to cap height. A campaign site is not a brand, so it stays a diagonal arrow.
+  // Same destination: ignore a trailing slash, and treat http and https as one when host and path match.
+  function linkKey(href) {
+    const safe = safeLinkHref(href);
+    if (!safe) return '';
+    const u = new URL(safe);
+    const path = u.pathname.replace(/\/+$/, '');
+    const scheme = u.protocol === 'http:' || u.protocol === 'https:' ? 'http:' : u.protocol;
+    return scheme + '//' + u.host.toLowerCase() + path + u.search;
+  }
+  const LINK_ICON = {
+    site: '<path d="M4.5 11.5 11.5 4.5M7.2 4.5H11.5V8.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>',
+    x: '<path d="M14.234 10.162 22.977 0h-2.072l-7.591 8.824L7.251 0H.258l9.168 13.343L.258 24H2.33l8.016-9.318L16.749 24h6.993zm-2.837 3.299-.929-1.329L3.076 1.56h3.182l5.965 8.532.929 1.329 7.754 11.09h-3.182z"/>',
+    instagram: '<path d="M7.0301.084c-1.2768.0602-2.1487.264-2.911.5634-.7888.3075-1.4575.72-2.1228 1.3877-.6652.6677-1.075 1.3368-1.3802 2.127-.2954.7638-.4956 1.6365-.552 2.914-.0564 1.2775-.0689 1.6882-.0626 4.947.0062 3.2586.0206 3.6671.0825 4.9473.061 1.2765.264 2.1482.5635 2.9107.308.7889.72 1.4573 1.388 2.1228.6679.6655 1.3365 1.0743 2.1285 1.38.7632.295 1.6361.4961 2.9134.552 1.2773.056 1.6884.069 4.9462.0627 3.2578-.0062 3.668-.0207 4.9478-.0814 1.28-.0607 2.147-.2652 2.9098-.5633.7889-.3086 1.4578-.72 2.1228-1.3881.665-.6682 1.0745-1.3378 1.3795-2.1284.2957-.7632.4966-1.636.552-2.9124.056-1.2809.0692-1.6898.063-4.948-.0063-3.2583-.021-3.6668-.0817-4.9465-.0607-1.2797-.264-2.1487-.5633-2.9117-.3084-.7889-.72-1.4568-1.3876-2.1228C21.2982 1.33 20.628.9208 19.8378.6165 19.074.321 18.2017.1197 16.9244.0645 15.6471.0093 15.236-.005 11.977.0014 8.718.0076 8.31.0215 7.0301.0839m.1402 21.6932c-1.17-.0509-1.8053-.2453-2.2287-.408-.5606-.216-.96-.4771-1.3819-.895-.422-.4178-.6811-.8186-.9-1.378-.1644-.4234-.3624-1.058-.4171-2.228-.0595-1.2645-.072-1.6442-.079-4.848-.007-3.2037.0053-3.583.0607-4.848.05-1.169.2456-1.805.408-2.2282.216-.5613.4762-.96.895-1.3816.4188-.4217.8184-.6814 1.3783-.9003.423-.1651 1.0575-.3614 2.227-.4171 1.2655-.06 1.6447-.072 4.848-.079 3.2033-.007 3.5835.005 4.8495.0608 1.169.0508 1.8053.2445 2.228.408.5608.216.96.4754 1.3816.895.4217.4194.6816.8176.9005 1.3787.1653.4217.3617 1.056.4169 2.2263.0602 1.2655.0739 1.645.0796 4.848.0058 3.203-.0055 3.5834-.061 4.848-.051 1.17-.245 1.8055-.408 2.2294-.216.5604-.4763.96-.8954 1.3814-.419.4215-.8181.6811-1.3783.9-.4224.1649-1.0577.3617-2.2262.4174-1.2656.0595-1.6448.072-4.8493.079-3.2045.007-3.5825-.006-4.848-.0608M16.953 5.5864A1.44 1.44 0 1 0 18.39 4.144a1.44 1.44 0 0 0-1.437 1.4424M5.8385 12.012c.0067 3.4032 2.7706 6.1557 6.173 6.1493 3.4026-.0065 6.157-2.7701 6.1506-6.1733-.0065-3.4032-2.771-6.1565-6.174-6.1498-3.403.0067-6.156 2.771-6.1496 6.1738M8 12.0077a4 4 0 1 1 4.008 3.9921A3.9996 3.9996 0 0 1 8 12.0077"/>',
+    facebook: '<path d="M9.101 23.691v-7.98H6.627v-3.667h2.474v-1.58c0-4.085 1.848-5.978 5.858-5.978.401 0 .955.042 1.468.103a8.68 8.68 0 0 1 1.141.195v3.325a8.623 8.623 0 0 0-.653-.036 26.805 26.805 0 0 0-.733-.009c-.707 0-1.259.096-1.675.309a1.686 1.686 0 0 0-.679.622c-.258.42-.374.995-.374 1.752v1.297h3.919l-.386 2.103-.287 1.564h-3.246v8.245C19.396 23.238 24 18.179 24 12.044c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.628 3.874 10.35 9.101 11.647Z"/>',
+    linkedin: '<path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>',
+    threads: '<path d="M12.186 24h-.007c-3.581-.024-6.334-1.205-8.184-3.509C2.35 18.44 1.5 15.586 1.472 12.01v-.017c.03-3.579.879-6.43 2.525-8.482C5.845 1.205 8.6.024 12.18 0h.014c2.746.02 5.043.725 6.826 2.098 1.677 1.29 2.858 3.13 3.509 5.467l-2.04.569c-1.104-3.96-3.898-5.984-8.304-6.015-2.91.022-5.11.936-6.54 2.717C4.307 6.504 3.616 8.914 3.589 12c.027 3.086.718 5.496 2.057 7.164 1.43 1.783 3.631 2.698 6.54 2.717 2.623-.02 4.358-.631 5.8-2.045 1.647-1.613 1.618-3.593 1.09-4.798-.31-.71-.873-1.3-1.634-1.75-.192 1.352-.622 2.446-1.284 3.272-.886 1.102-2.14 1.704-3.73 1.79-1.202.065-2.361-.218-3.259-.801-1.063-.689-1.685-1.74-1.752-2.964-.065-1.19.408-2.285 1.33-3.082.88-.76 2.119-1.207 3.583-1.291a13.853 13.853 0 0 1 3.02.142c-.126-.742-.375-1.332-.75-1.757-.513-.586-1.308-.883-2.359-.89h-.029c-.844 0-1.992.232-2.721 1.32L7.734 7.847c.98-1.454 2.568-2.256 4.478-2.256h.044c3.194.02 5.097 1.975 5.287 5.388.108.046.216.094.321.142 1.49.7 2.58 1.761 3.154 3.07.797 1.82.871 4.79-1.548 7.158-1.85 1.81-4.094 2.628-7.277 2.65Zm1.003-11.69c-.242 0-.487.007-.739.021-1.836.103-2.98.946-2.916 2.143.067 1.256 1.452 1.839 2.784 1.767 1.224-.065 2.818-.543 3.086-3.71a10.5 10.5 0 0 0-2.215-.221z"/>',
+    youtube: '<path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>',
+    tiktok: '<path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/>',
+    substack: '<path d="M22.539 8.242H1.46V5.406h21.08v2.836zM1.46 10.812V24L12 18.11 22.54 24V10.812H1.46zM22.54 0H1.46v2.836h21.08V0z"/>',
+  };
+  function iconKind(item) {
+    if (item.kind === 'social') {
+      const p = String(item.platform || '').toLowerCase();
+      if (p === 'twitter') return 'x';
+      if (LINK_ICON[p]) return p;
+    }
+    return 'site';
+  }
+  function iconSvg(kind) {
+    const svg = document.createElementNS(SVGNS, 'svg');
+    const brand = kind !== 'site';
+    svg.setAttribute('viewBox', brand ? '0 0 24 24' : '0 0 16 16');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+    if (brand) svg.setAttribute('fill', 'currentColor');
+    svg.innerHTML = LINK_ICON[kind] || LINK_ICON.site;
+    return svg;
+  }
+  function whereTo(item) {
+    const href = safeLinkHref(item.href);
+    let host = '';
+    try { host = new URL(href).host.replace(/^www\./, ''); } catch { /* keep the label */ }
+    const label = String(item.label || '').trim();
+    if (!label) return host || href;
+    if (host && !label.toLowerCase().includes(host.toLowerCase())) return label + ' (' + host + ')';
+    return label;
+  }
+  function iconLink(item) {
+    const href = safeLinkHref(item.href);
+    if (!href) return null;
+    const a = document.createElement('a');
+    a.className = 'ext-link';
+    a.href = href;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.setAttribute('aria-label', item.label || 'Link');
+    a.dataset.tip = whereTo(item);
+    a.append(iconSvg(iconKind(item)));
+    return a;
+  }
+  function primarySite(name) {
+    const links = (mayorProfile(name) || { links: [] }).links;
+    return links.find((item) => item.kind === 'campaign' && safeLinkHref(item.href))
+      || links.find((item) => item.kind === 'site' && safeLinkHref(item.href))
+      || null;
+  }
+  // The name goes to the campaign site. Other pages and social accounts are icons beside it.
+  function paintIdentity(host, name) {
+    const site = primarySite(name);
+    let link = host.querySelector('.nm-link');
+    const nm = link.querySelector('.nm');
+    const want = site ? 'A' : 'SPAN';
+    if (link.tagName !== want) {
+      const next = document.createElement(site ? 'a' : 'span');
+      next.className = 'nm-link';
+      next.append(nm);
+      link.replaceWith(next);
+      link = next;
+    }
+    const mark = link.querySelector('svg');
+    if (site) {
+      link.href = safeLinkHref(site.href);
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      if (!mark) link.append(iconSvg('site'));
+    } else if (mark) mark.remove();
+    const ext = host.querySelector('.ext');
+    const seen = new Set();
+    const siteKey = site ? linkKey(site.href) : '';
+    if (siteKey) seen.add(siteKey);
+    const extraSites = [];
+    const socials = [];
+    for (const item of (mayorProfile(name) || { links: [] }).links) {
+      if (item === site) continue;
+      const href = safeLinkHref(item.href);
+      const key = href && linkKey(href);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      // A second website is not another arrow. It is named in the name-link tooltip.
+      if (iconKind(item) === 'site') extraSites.push(item);
+      else socials.push(item);
+    }
+    if (site) {
+      link.dataset.tip = [whereTo(site), ...extraSites.map(whereTo)].join('\n');
+      link.setAttribute('aria-description', link.dataset.tip.replace(/\n/g, '. '));
+    } else {
+      delete link.dataset.tip;
+      link.removeAttribute('aria-description');
+    }
+    const rest = socials;
+    const sig = rest.map((item) => item.href).join('|');
+    if (ext.dataset.sig !== sig) {
+      ext.dataset.sig = sig;
+      ext.replaceChildren(...rest.map(iconLink).filter(Boolean));
+    }
+    ext.hidden = rest.length === 0;
+  }
+  // One shared tooltip, positioned on the icon, so a scrolling candidate list cannot clip it.
+  const tipPop = h('p', 'status-pop');
+  tipPop.hidden = true;
+  tipPop.setAttribute('role', 'tooltip');
+  document.body.append(tipPop);
+  function hideStatus() { tipPop.hidden = true; tipPop.dataset.for = ''; document.querySelectorAll('.status-tip[aria-expanded="true"]').forEach((b) => b.setAttribute('aria-expanded', 'false')); }
+  function placeTip(el, text, key) {
+    tipPop.replaceChildren();
+    String(text || '').split('\n').forEach((line, i) => {
+      if (i) tipPop.append(document.createElement('br'));
+      tipPop.append(document.createTextNode(line));
+    });
+    tipPop.hidden = false;
+    tipPop.dataset.for = key;
+    const r = el.getBoundingClientRect();
+    const w = tipPop.offsetWidth;
+    const left = Math.max(8, Math.min(r.left + r.width / 2 - w / 2, innerWidth - w - 8));
+    let top = r.top - tipPop.offsetHeight - 6;
+    if (top < 8) top = r.bottom + 6;
+    tipPop.style.left = left + 'px';
+    tipPop.style.top = top + 'px';
+  }
+  function showStatus(btn) { btn.setAttribute('aria-expanded', 'true'); placeTip(btn, btn.dataset.note, btn.id); }
+  function linkAnchor(node) {
+    const a = node && node.closest && node.closest('a.nm-link, a.ext-link');
+    return a && a.dataset.tip ? a : null;
+  }
+  function showLinkTip(a) {
+    document.querySelectorAll('.status-tip[aria-expanded="true"]').forEach((b) => b.setAttribute('aria-expanded', 'false'));
+    placeTip(a, a.dataset.tip, a.href);
+  }
+  function statusTip(name, slot) {
+    const note = (mayorProfile(name) || {}).note;
+    if (!note) return null;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'status-tip';
+    btn.id = 'status-tip-' + slot + '-' + name.toLowerCase().replace(/[^a-z]+/g, '-');
+    btn.dataset.note = note;
+    btn.setAttribute('aria-label', name + ': ' + note);
+    btn.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="6.25" fill="none" stroke="currentColor" stroke-width="1.25"/><path d="M8 7.25v3.5" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"/><circle cx="8" cy="4.7" r="0.7" fill="currentColor"/></svg>';
+    let touch = false;
+    btn.addEventListener('pointerdown', (e) => { touch = e.pointerType === 'touch'; });
+    btn.addEventListener('pointerenter', (e) => { if (e.pointerType !== 'touch') showStatus(btn); });
+    btn.addEventListener('pointerleave', (e) => { if (e.pointerType !== 'touch' && document.activeElement !== btn) hideStatus(); });
+    btn.addEventListener('focus', () => showStatus(btn));
+    btn.addEventListener('blur', hideStatus);
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!touch) return;
+      e.preventDefault();
+      if (tipPop.hidden || tipPop.dataset.for !== btn.id) showStatus(btn); else hideStatus();
+    });
+    return btn;
+  }
+  document.addEventListener('click', hideStatus);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideStatus(); });
+  addEventListener('scroll', hideStatus, true);
+  addEventListener('resize', hideStatus);
+  // Hover and keyboard focus say where a name or social icon goes. Touch still follows the link.
+  document.addEventListener('pointerover', (e) => {
+    if (e.pointerType === 'touch') return;
+    const a = linkAnchor(e.target);
+    if (!a) return;
+    showLinkTip(a);
+  });
+  document.addEventListener('pointerout', (e) => {
+    const a = linkAnchor(e.target);
+    if (!a || (e.relatedTarget && a.contains(e.relatedTarget))) return;
+    if (tipPop.dataset.for === a.href) hideStatus();
+  });
+  document.addEventListener('focusin', (e) => { const a = linkAnchor(e.target); if (a) showLinkTip(a); });
+  document.addEventListener('focusout', (e) => {
+    const a = linkAnchor(e.target);
+    if (a && tipPop.dataset.for === a.href && !(e.relatedTarget && a.contains(e.relatedTarget))) hideStatus();
+  });
 
   // Candidate colours. Colour is never the only cue: names always appear beside it.
   const KNOWN = { 'Olivia Chow': 'var(--chow)', 'Brad Bradford': 'var(--bradford)', 'Chris Alexander': 'var(--alexander)' };
@@ -42,6 +255,8 @@
   let race = 'council';
   let map, wardLayer, geo;
   let lastFetchOk = null;
+  let lastLoadOk = false;
+  let loadGen = 0;
 
   if (DEMO) {
     $('sample-banner').hidden = false;
@@ -56,18 +271,22 @@
 
   // ---------- data ----------
   async function load() {
+    const gen = ++loadGen;
     try {
       const res = await fetch(API, { cache: 'no-cache' });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const next = await res.json();
+      if (gen !== loadGen) return;
       if (DEMO && !next.sample) throw new Error('Expected sample data in demo mode');
       if (!DEMO && next.sample) throw new Error('Refusing sample data in live mode');
-      prev = state; state = next; lastFetchOk = Date.now();
+      prev = state; state = next; lastFetchOk = Date.now(); lastLoadOk = true;
       render();
       setConn(!next.error, "Can't reach the City's results feed");
     } catch (e) {
+      if (gen !== loadGen) return;
+      lastLoadOk = false;
       setConn(false, 'Lost connection to the tracker');
-      showError(`Can't reach the tracker server (${e.message}). ${state ? 'Showing the last numbers received.' : ''} Retrying every ${REFRESH_MS / 1000} seconds.`);
+      showError(`Can't reach the tracker server (${e.message}).${state ? ' Showing the last numbers received.' : ''} Retrying.`);
     }
   }
 
@@ -84,7 +303,7 @@
     const hasVotes = !!(m && m.total > 0);
     const allIn = !!(m && m.polls && m.pollsReceived >= m.polls);
 
-    if (s.error) showError(`Couldn't reach the City's results feed at ${et(s.error.at)} (${s.error.message}). ${s.lastCheckAt ? 'Showing data last received at ' + et(s.lastCheckAt) + '.' : ''} Retrying automatically every minute.`);
+    if (s.error) showError(`Couldn't reach the City's results feed at ${et(s.error.at)} (${s.error.message}).${s.lastCheckAt ? ' Showing data last received at ' + et(s.lastCheckAt) + '.' : ''} Retrying.`);
     else showError(null);
 
     // status line
@@ -112,13 +331,15 @@
       const p = etParts(Date.now());
       const isNight = p.year === '2026' && p.month === '10' && p.day === '26';
       const before8 = isNight ? Number(p.hour) < 20 : (p.year === '2026' && (Number(p.month) < 10 || (p.month === '10' && Number(p.day) < 26)));
-      zero.innerHTML = before8
-        ? '<strong>Polls close at 8 PM ET.</strong> The City posts its first results after that. This page checks the official feed every minute and fills in by itself, so you can leave it open.'
-        : '<strong>Polls closed at 8 PM ET.</strong> No results in the City\'s feed yet. This page checks every minute and will update by itself.';
+      zero.replaceChildren(h('strong', null, before8 ? 'Polls close at 8 PM ET.' : 'Polls closed at 8 PM ET.'));
+      zero.append(document.createTextNode(before8
+        ? ' The City posts its first results after that. The City publishes about once a minute. This page reads the City\'s results feed one second after each publication, and every 20 seconds until the file starts changing. You can leave it open.'
+        : ' No results in the City\'s results feed yet. The City publishes about once a minute. This page reads that file one second after each publication, and every 20 seconds until the file starts changing.'));
     } else {
       zero.hidden = true;
       leaders.hidden = false;
-      m.candidates.slice(0, 2).forEach((c, i) => renderLeader(i, c, m));
+      // mayor.candidates is already votes descending, name order on a tie. Row 0 is the highest.
+      m.candidates.slice(0, 2).forEach((c, i) => renderLeader(i, c));
     }
 
     // freshness
@@ -136,24 +357,27 @@
   }
 
   // Two persistent leader slots: numbers roll, a new name crossfades, colour fades.
-  function renderLeader(i, c, m) {
+  // Slot i follows mayor.candidates, which is votes descending (name order when votes tie).
+  function renderLeader(i, c) {
     let el = $('leaders').children[i];
     if (!el) {
       el = document.createElement('div');
       el.className = 'leader';
-      // one row of the leaders grid: name (+ tag right after it), share, votes. Columns come from the parent (subgrid).
-      el.innerHTML = `<span class="leader-name"><i></i><span class="nm"></span><span class="leader-tag t-wide"></span></span><span class="leader-pct">${NUM_HTML}</span><span class="leader-votes">${NUM_HTML}<span class="unit"> votes</span><span class="leader-tag t-narrow"></span></span>`;
-      // the tag sits right after the name on wide screens and after the vote count on phones (CSS picks one)
+      // one row of the leaders grid: name, share, votes. Columns come from the parent (subgrid).
+      el.innerHTML = `<span class="leader-name"><i></i><span class="nm-link"><span class="nm"></span></span><span class="ext" hidden></span></span><span class="leader-pct">${NUM_HTML}</span><span class="leader-votes">${NUM_HTML}<span class="unit"> votes</span></span>`;
       $('leaders').appendChild(el);
     }
     setText(el.querySelector('.leader-name .nm'), c.name);
-    el.querySelector('.leader-name .nm').title = c.name;
+    const nameEl = el.querySelector('.leader-name');
+    paintIdentity(nameEl, c.name);
+    let mark = nameEl.querySelector('.status-tip');
+    const note = (mayorProfile(c.name) || {}).note;
+    if (!note) { if (mark) mark.remove(); }
+    else if (!mark) nameEl.append(statusTip(c.name, 'leader' + i));
     el.querySelector('.leader-name i').style.background = colorFor(c.name);
     el.querySelector('.leader-pct').style.color = INK[c.name] || 'var(--ink)';
     setNum(el.querySelector('.leader-pct .tw'), c.pct, (v) => v.toFixed(1) + '%');
     setNum(el.querySelector('.leader-votes .tw'), c.votes, (v) => fmtInt.format(Math.round(v)));
-    const txt = i === 0 ? (m.tie ? 'Tied' : 'Leading') : '';
-    el.querySelectorAll('.leader-tag').forEach((tag) => { tag.hidden = !txt; setText(tag, txt); });
   }
 
   function tickCountdown() {
@@ -172,7 +396,7 @@
     const anyOther = [...leadersInWards].some((n) => !names.has(n));
     const sw = (bg, cls) => { const x = h('span', 'sw' + (cls ? ' ' + cls : '')); if (bg) x.style.background = bg; return x; };
     const li = (swatch, text) => { const x = h('li'); x.append(swatch, document.createTextNode(text)); return x; };
-    const items = [...names].map((n) => li(sw(colorFor(n)), n));
+    const items = [...names].map((n) => { const item = li(sw(colorFor(n)), n); const mark = statusTip(n, 'legend'); if (mark) item.append(mark); return item; });
     items.push(li(sw('var(--other)'), 'Anyone else'));
     items.push(li(sw('var(--tie)'), 'Tie'));
     items.push(li(sw(null, 'sw-none'), 'No results yet'));
@@ -207,7 +431,7 @@
     });
     box.append(t);
     box.append(h('div', 'sub tip-lead', mm.tie ? 'Tied' : gapText(mm)));
-    if (w.council && w.council.leader && w.council.marginVotes != null) box.append(h('div', 'sub tip-council', `Council: ${w.council.leader} ${w.council.tie ? 'tied' : gapText(w.council).replace(/^L/, 'l')}`));
+    if (w.council && w.council.leader && w.council.marginVotes != null) box.append(h('div', 'sub tip-council', `Councillor: ${w.council.leader} ${w.council.tie ? 'tied' : gapText(w.council).replace(/^L/, 'l')}`));
     return box;
   }
   // "Leads by 120 votes (0.6 pts)"
@@ -238,9 +462,108 @@
     y = Math.min(Math.max(pad, y), Math.max(pad, mh - th - pad));
     tipEl.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
   }
+  // Hover card stays one width: the longest ward title or top-4 mayor name, plus fixed number columns.
+  // Moving between wards updates that shell in place so only the figures roll.
+  const HOVER_NUM = { type: 'spring', duration: 0.32, bounce: 0 };
+  let tipNameKey = '';
+  function hoverSkeleton() {
+    const box = h('div', 'tip-body');
+    const hd = h('h4');
+    hd.append(h('span', 'tip-num'), document.createTextNode(' '), h('span', 'tip-ward'));
+    const t = h('table', 'tip-table');
+    const cols = document.createElement('colgroup');
+    cols.append(h('col', 'tip-col-name'), h('col', 'tip-col-share'), h('col', 'tip-col-votes'));
+    t.append(cols);
+    const th = h('tr', 'tip-head');
+    th.append(h('th', null, 'Mayor'), h('th', 'r', 'Share'), h('th', 'r', 'Votes'));
+    t.append(th);
+    for (let i = 0; i < 4; i++) {
+      const tr = h('tr', i === 0 ? 'lead tip-row' : 'tip-row');
+      const who = h('span', 'who');
+      who.append(dot('transparent'), h('span', 'nm'));
+      const nameCell = h('td'); nameCell.append(who);
+      const share = h('td', 'r tip-share'); share.innerHTML = NUM_HTML;
+      const votes = h('td', 'r tip-votes'); votes.innerHTML = NUM_HTML;
+      tr.append(nameCell, share, votes);
+      t.append(tr);
+    }
+    const meta = h('div', 'sub tip-meta');
+    meta.append(h('span', 'tip-meta-text'), h('span', 'tip-sample', 'SAMPLE DATA'));
+    box.append(hd, meta, t, h('div', 'sub tip-lead'), h('div', 'sub tip-council'));
+    return box;
+  }
+  function lockHoverWidth() {
+    if (!tipEl || !state || !state.wards || !state.wards.length) return;
+    const key = state.wards.map((w) => w.num + '\t' + w.name + '\t' + ((w.mayor && w.mayor.candidates) || []).slice(0, 4).map((c) => c.name).join('|')).join('\n') + '\t' + (map ? map.getSize().x : 0);
+    if (key === tipNameKey) return;
+    tipNameKey = key;
+    const probe = h('div', 'ward-tip map-tip');
+    probe.style.cssText = 'position:fixed;left:-10000px;top:0;visibility:hidden;width:max-content;max-width:none';
+    const title = h('h4');
+    const who = h('span', 'who');
+    who.append(dot('#000'), document.createTextNode(''));
+    probe.append(title, who);
+    document.body.append(probe);
+    let max = 0;
+    const nm = who.lastChild;
+    for (const w of state.wards) {
+      title.textContent = 'Ward ' + w.num + ' ' + w.name;
+      max = Math.max(max, title.getBoundingClientRect().width);
+      for (const c of ((w.mayor && w.mayor.candidates) || []).slice(0, 4)) {
+        nm.textContent = c.name;
+        max = Math.max(max, who.getBoundingClientRect().width);
+      }
+    }
+    probe.remove();
+    const share = 68, votes = 76, pad = 24;
+    const cap = Math.min(380, Math.max(240, (map ? map.getSize().x : 800) - 16));
+    const width = Math.min(cap, Math.max(240, Math.ceil(max) + share + votes + pad));
+    tipEl.style.width = width + 'px';
+    tipEl.style.setProperty('--tip-name', (width - pad - share - votes) + 'px');
+  }
+  function paintHoverTip(w) {
+    const first = tipEl.dataset.painted !== '1';
+    tipEl.dataset.painted = '1';
+    const instant = first || reduceMotion.matches;
+    tipEl.querySelector('.tip-num').textContent = 'Ward ' + w.num;
+    tipEl.querySelector('.tip-ward').textContent = ' ' + w.name;
+    const mm = w && w.mayor;
+    const metaText = tipEl.querySelector('.tip-meta-text');
+    const sample = tipEl.querySelector('.tip-sample');
+    const table = tipEl.querySelector('.tip-table');
+    const lead = tipEl.querySelector('.tip-lead');
+    const council = tipEl.querySelector('.tip-council');
+    if (sample) sample.hidden = !DEMO;
+    if (!mm || !mm.total) {
+      table.hidden = true; lead.hidden = true; council.hidden = true;
+      metaText.textContent = mm ? `No mayoral results yet, 0 of ${fmtInt.format(mm.polls)} polls` : 'No mayoral results yet';
+      return;
+    }
+    table.hidden = false; lead.hidden = false;
+    metaText.textContent = `${fmtInt.format(mm.pollsReceived)} of ${fmtInt.format(mm.polls)} polls reporting`;
+    const cands = mm.candidates.slice(0, 4);
+    tipEl.querySelectorAll('.tip-row').forEach((tr, i) => {
+      const c = cands[i];
+      tr.hidden = !c;
+      if (!c) return;
+      tr.querySelector('.who i').style.background = colorFor(c.name);
+      tr.querySelector('.nm').textContent = c.name;
+      const opt = { instant, tier: HOVER_NUM };
+      setNum(tr.querySelector('.tip-share .tw'), c.pct, (v) => v.toFixed(1) + '%', opt);
+      setNum(tr.querySelector('.tip-votes .tw'), c.votes, (v) => fmtInt.format(Math.round(v)), opt);
+    });
+    lead.textContent = mm.tie ? 'Tied' : gapText(mm);
+    const councilText = w.council && w.council.leader && w.council.marginVotes != null
+      ? `Councillor: ${w.council.leader} ${w.council.tie ? 'tied' : gapText(w.council).replace(/^L/, 'l')}` : '';
+    council.hidden = !councilText;
+    if (councilText) council.textContent = councilText;
+  }
   function showTip(num, pt) {
     const w = wardInfo(num); if (!w || !tipEl) return;
-    if (tipNum !== num) { tipEl.replaceChildren(wardDetails(w)); tipNum = num; }
+    if (!tipEl.querySelector('.tip-table')) tipEl.replaceChildren(hoverSkeleton());
+    lockHoverWidth();
+    if (String(tipNum) !== String(num)) paintHoverTip(w);
+    tipNum = num;
     tipPt = pt; tipEl.hidden = false; placeTip();
   }
   function hideTip() { if (tipEl) tipEl.hidden = true; tipNum = null; }
@@ -370,7 +693,7 @@
       if (el) { el.style.fill = st.fillColor; el.style.fillOpacity = st.fillOpacity; }
     });
     if (selected != null) fillPanel();
-    if (tipNum != null && tipEl && !tipEl.hidden) { const n = tipNum; tipNum = null; showTip(n, tipPt); }
+    if (tipNum != null && tipEl && !tipEl.hidden) { const w = wardInfo(tipNum); if (w) { lockHoverWidth(); paintHoverTip(w); placeTip(); } }
   }
 
   // ---------- charts (D3 scales + Motion springs, see charts.js) ----------
@@ -378,15 +701,12 @@
   const surname = (n) => n.split(' ').slice(-1)[0];
   function renderCharts() {
     // direct labels at the line ends (surname + latest value) instead of a legend; share axis starts at 0
-    shareChart = shareChart || new TweenChart($('share-chart'), { R: 92, yFmt: (v) => v + '%', endFmt: (v, k) => `${surname(k)} ${v.toFixed(1)}%`, xFmt: (t) => fmtHM.format(t) });
-    marginChart = marginChart || new TweenChart($('margin-chart'), { R: 58, zero: true, yFmt: (v) => (v === 0 ? 'Tie' : Math.abs(v) + ''), endFmt: (v) => (v >= 0 ? '+' : '\u2212') + Math.abs(v).toFixed(1) + ' pts', xFmt: (t) => fmtHM.format(t) });
+    shareChart = shareChart || new TweenChart($('share-chart'), { yFmt: (v) => v + '%', endFmt: (v) => v.toFixed(1) + '%', readFmt: (v, k) => `${surname(k)} ${v.toFixed(1)}%`, xFmt: (t) => fmtHM.format(t), tipFmt: (t) => fmtHMS.format(t) });
+    marginChart = marginChart || new TweenChart($('margin-chart'), { zero: true, yFmt: (v) => (v === 0 ? 'Tie' : Math.abs(v) + ''), endFmt: (v) => (v >= 0 ? '+' : '\u2212') + Math.abs(v).toFixed(1) + ' pts', xFmt: (t) => fmtHM.format(t), tipFmt: (t) => fmtHMS.format(t) });
     const hist = (state.history || []).filter((p) => p.votes > 0);
     const m = state.mayor;
     const top = m && m.total ? m.candidates.slice(0, 2).map((c) => c.name) : [];
     // polls-reporting context for both charts, so a big early swing reads as early
-    const ctx = m && m.total ? `As of ${fmtInt.format(m.pollsReceived)} of ${fmtInt.format(m.polls)} polls reporting.${DEMO ? ' Sample data.' : ''}` : '';
-    $('share-note').textContent = ctx ? `Share of votes counted so far. ${ctx}` : 'Share of votes counted so far.';
-    $('margin-note').textContent = ctx ? `Gap between the top two, in percentage points. Not a projection. ${ctx}` : 'Gap between the top two, in percentage points. Not a projection.';
     if (!hist.length || !top.length) {
       const msg = 'Fills in as the City reports results after 8 PM ET.';
       shareChart.empty(msg); marginChart.empty(msg);
@@ -412,10 +732,13 @@
   function candNode(c) {
     const li = document.createElement('li');
     li.className = 'cand'; li.dataset.key = c.name;
-    li.innerHTML = `<span class="who"><i></i><span class="nm"></span></span><span class="p">${NUM_HTML}</span><span class="n">${NUM_HTML}</span><span class="bar" aria-hidden="true"><i></i></span>`;
+    li.innerHTML = `<span class="who"><i></i><span class="nm-link"><span class="nm"></span></span><span class="ext" hidden></span></span><span class="p">${NUM_HTML}</span><span class="n">${NUM_HTML}</span><span class="bar" aria-hidden="true"><i></i></span>`;
     li.querySelector('.who i').style.background = colorFor(c.name);
     li.querySelector('.bar i').style.background = colorFor(c.name);
     li.querySelector('.nm').textContent = c.name;
+    paintIdentity(li.querySelector('.who'), c.name);
+    const mark = statusTip(c.name, 'cand');
+    if (mark) li.querySelector('.who').append(mark);
     return li;
   }
   const candNodes = new Map();
@@ -544,7 +867,7 @@
       const keep = new Set(nodes);
       [...tbody.children].forEach((tr) => { if (!keep.has(tr)) tr.remove(); });
     }, { now, onSettle: () => rowHover && rowHover.refresh() });
-    $('table-empty').hidden = filtered.length > 0;
+    $('table-empty').hidden = !q || filtered.length > 0;
     $('table-caption').textContent = `${race === 'council' ? 'Councillor' : 'Mayoral'} results by ward${DEMO ? ' (sample data)' : ''}`;
     if (rowHover) requestAnimationFrame(rowHover.refresh);
   }
@@ -655,14 +978,14 @@
     const city = 'Mayor, city-wide';
     if (!pm.total && m.total) out.push({ context: city, title: 'First results are in', description: `${m.candidates.slice(0, 2).map((c) => `${short(c.name)} ${pct(c.pct)}`).join(', ')}. ${pollsLine(m)}` });
     else if (pm.leader && m.leader && pm.leader !== m.leader && !m.tie) out.push({ context: city, title: `${m.leader} now leads for Mayor`, description: `Ahead of ${short(m.candidates[1].name)} by ${gapText(m).replace(/^Leads by /, '')}. ${pollsLine(m)}` });
-    if (m.polls && m.pollsReceived >= m.polls && pm.pollsReceived < pm.polls) out.push({ context: city, title: 'All polls have reported', description: `${short(m.leader)} finishes ahead with ${pct(m.candidates[0].pct)}. Unofficial until the City certifies.` });
+    if (m.polls && m.pollsReceived >= m.polls && pm.pollsReceived < pm.polls) out.push({ context: city, title: 'All polls have reported', description: `${short(m.leader)} is ahead with ${pct(m.candidates[0].pct)}. Unofficial until the City Clerk certifies.` });
     const pw = new Map(prev.wards.map((w) => [w.num, w]));
     const changes = [];
     for (const w of state.wards) {
       const o = pw.get(w.num); if (!o) continue;
-      for (const [k, office] of [['mayor', 'Mayor'], ['council', 'Council']]) {
+      for (const [k, office] of [['mayor', 'Mayor'], ['council', 'Councillor']]) {
         const a1 = o[k], b1 = w[k];
-        if (a1 && b1 && a1.leader && b1.leader && a1.leader !== b1.leader && !b1.tie) changes.push({ w, r: b1, office, brief: `Ward ${w.num} ${short(b1.leader)}${office === 'Council' ? ' (Council)' : ''}` });
+        if (a1 && b1 && a1.leader && b1.leader && a1.leader !== b1.leader && !b1.tie) changes.push({ w, r: b1, office, brief: `Ward ${w.num} ${short(b1.leader)}${office === 'Councillor' ? ' (Councillor)' : ''}` });
       }
     }
     if (changes.length === 1) { const c = changes[0]; out.push({ context: `Ward ${c.w.num} ${c.w.name}`, title: `${c.r.leader} now leads for ${c.office}`, description: gapText(c.r) + '.' }); }
@@ -682,10 +1005,27 @@
   }
 
   // ---------- go ----------
+  function clientWait() {
+    const next = state && state.nextCheckAt;
+    if (!lastLoadOk || !next) return SIM ? 4000 : CLIENT_CAP_MS;
+    const aligned = next + CLIENT_LAG_MS - Date.now();
+    if (SIM) return Math.min(CLIENT_CAP_MS, Math.max(500, aligned));
+    if (aligned > CLIENT_CAP_MS) return CLIENT_CAP_MS;
+    return Math.max(800, aligned);
+  }
+  let clientTimer = 0;
+  function armClient() {
+    clearTimeout(clientTimer);
+    if (document.hidden) return;
+    clientTimer = setTimeout(() => { load().finally(armClient); }, clientWait());
+  }
   initMap().catch(() => { $('map').replaceChildren(h('p', 'hint map-error', "Map couldn't load. The ward table below has the same results.")); });
-  load();
-  let iv = setInterval(load, REFRESH_MS);
-  document.addEventListener('visibilitychange', () => { clearInterval(iv); if (!document.hidden) { load(); iv = setInterval(load, REFRESH_MS); } });
+  load().finally(armClient);
+  document.addEventListener('visibilitychange', () => {
+    clearTimeout(clientTimer);
+    if (document.hidden) return;
+    load().finally(armClient);
+  });
 })();
 
 // Candidate list: the top 3 stay pinned, everyone else scrolls inside the card. A soft fade marks the bottom edge
