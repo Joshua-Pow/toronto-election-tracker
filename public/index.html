@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en-CA">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f3f1ec">
+  <meta name="color-scheme" content="light">
+  <link rel="preconnect" href="https://server.arcgisonline.com" crossorigin>
+  <title>Toronto 2026 election: live mayoral results</title>
+  <meta name="description" content="Live unofficial results for the 2026 Toronto mayoral and council races, from the City of Toronto's media results feed.">
+  <link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="/vendor/sonner/sonner.css">
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='%237b4ea3'/%3E%3C/svg%3E">
+</head>
+<body>
+  <a class="skip" href="#wards-heading">Skip to ward results table</a>
+
+  <div id="sample-banner" class="sample-banner" hidden role="note">
+    <strong>SAMPLE DATA</strong>
+    <span id="sample-detail">Made-up numbers. Not real results.</span>
+    <span class="banner-actions">
+      <a id="sim-toggle" class="btn btn-ghost" href="/?demo=live" hidden>Play simulation</a>
+      <a class="btn btn-ghost" href="/">Live results</a>
+    </span>
+  </div>
+
+  <main class="page reveal-product">
+    <header class="card summary" aria-labelledby="page-title">
+      <div class="summary-main">
+        <h1 id="page-title" class="visually-hidden">Toronto 2026 mayoral election, live results</h1>
+        <p class="status-line">
+          <span id="status-dot" class="dot" aria-hidden="true"></span>
+          <strong id="status-label">Loading results…</strong>
+                    <span id="polls-label" class="num"><span id="polls-rec" class="tw"><span class="tw-v" aria-hidden="true">…</span><span class="visually-hidden">loading</span></span> of <span id="polls-total">1,431</span> polls reporting</span>
+          <span id="sample-chip" class="chip-sample" hidden>SAMPLE DATA</span>
+        </p>
+        <div class="progress" role="progressbar" aria-labelledby="polls-label" aria-valuemin="0" aria-valuemax="1431" aria-valuenow="0" id="progress">
+          <div class="progress-fill" id="progress-fill"></div>
+        </div>
+        <div id="leaders" class="leaders"></div>
+        <p id="zero-state" class="zero-state" hidden></p>
+      </div>
+      <dl class="freshness" aria-label="Data freshness">
+        <div><dt>Last checked</dt><dd id="checked" class="num">…</dd></div>
+        <div><dt>City last published</dt><dd id="published" class="num">…</dd></div>
+        <div><dt>Next check</dt><dd id="next-check" class="num">…</dd></div>
+      </dl>
+    </header>
+
+    <div id="error-banner" class="error-banner" role="alert" hidden></div>
+
+    <div class="grid">
+      <section class="card map-card" aria-labelledby="map-heading">
+        <div class="card-head">
+          <h2 id="map-heading">Mayor: who leads each ward</h2>
+          <p class="hint"><span class="fine-only">Hover a ward for its numbers, or click it for details below the map. Click a table row to find its ward here.</span><span class="touch-only">Tap a ward for its numbers. Use two fingers to move or zoom the map; one finger scrolls the page.</span></p>
+        </div>
+        <div id="map" class="map" role="region" aria-label="Map of Toronto's 25 wards coloured by the leading mayoral candidate. The ward table below lists the same results."></div>
+        <div id="ward-panel" class="ward-panel" hidden>
+          <div class="wp-clip">
+            <section class="wp-body" aria-labelledby="wp-title">
+              <div class="wp-head">
+                <h3 id="wp-title" tabindex="-1"></h3>
+                <button type="button" id="wp-close" class="btn wp-close" aria-label="Close ward details"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+              </div>
+              <div id="wp-content" class="ward-tip wp-content"></div>
+            </section>
+          </div>
+        </div>
+        <p id="ward-live" class="visually-hidden" aria-live="polite"></p>
+        <div class="legend" aria-label="Map legend">
+          <div>
+            <h3>Ward led by</h3>
+            <ul id="legend-leaders" class="legend-list"></ul>
+          </div>
+          <div>
+            <h3>Leader's share of the ward's votes</h3>
+            <ul class="legend-list">
+              <li><span class="sw sw-share o1"></span>Under 40%</li>
+              <li><span class="sw sw-share o2"></span>40 to 50%</li>
+              <li><span class="sw sw-share o3"></span>50 to 60%</li>
+              <li><span class="sw sw-share o4"></span>60% or more</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="card cand-card" aria-labelledby="cands-heading">
+        <h2 id="cands-heading">Mayoral candidates</h2>
+        <div class="cand-head" aria-hidden="true"><span id="cands-count">Candidate</span><span>Share</span><span>Votes</span></div>
+        <ol id="cand-top" class="cand-list cand-top"></ol>
+        <div id="cand-scroll" class="cand-scroll" role="region" aria-label="Other mayoral candidates, scrollable list" tabindex="0">
+          <ol id="cand-list" class="cand-list" start="4"></ol>
+        </div>
+      </section>
+    </div>
+
+    <div class="charts">
+      <section class="card chart-card" aria-labelledby="share-heading">
+        <h2 id="share-heading">Vote share over time</h2>
+        <p id="share-note" class="hint chart-note">Share of votes counted so far.</p>
+        <div id="share-chart" class="chart"></div>
+      </section>
+      <section class="card chart-card" aria-labelledby="margin-heading">
+        <h2 id="margin-heading">Lead over time</h2>
+        <p id="margin-note" class="hint chart-note">Gap between the top two, in percentage points. Not a projection.</p>
+        <div id="margin-chart" class="chart"></div>
+      </section>
+    </div>
+
+    <section class="card table-card" aria-labelledby="wards-heading">
+      <div class="table-head">
+        <h2 id="wards-heading" tabindex="-1">Results by ward</h2>
+        <div class="controls">
+          <div class="segmented" role="group" aria-label="Race">
+            <button type="button" class="seg" data-race="council" aria-pressed="true"><span class="ghost-wt" data-text="Councillor">Councillor</span></button>
+            <button type="button" class="seg" data-race="mayor" aria-pressed="false"><span class="ghost-wt" data-text="Mayor">Mayor</span></button>
+          </div>
+          <label class="field">
+            <span>Sort</span>
+            <select id="sort">
+              <option value="ward">Ward number</option>
+              <option value="margin">Closest race first</option>
+              <option value="reporting">Least reported first</option>
+            </select>
+          </label>
+          <label class="field grow">
+            <span>Find</span>
+            <input id="filter" type="search" name="ward-filter" placeholder="Ward or name" autocomplete="off" spellcheck="false" enterkeyhint="search">
+          </label>
+        </div>
+      </div>
+      <div class="table-wrap" id="table-wrap">
+        <table id="ward-table" role="table">
+          <caption id="table-caption" class="visually-hidden">Councillor results by ward</caption>
+          <thead>
+            <tr role="row">
+              <th scope="col" role="columnheader" class="c-ward">Ward</th>
+              <th scope="col" role="columnheader" class="c-lead">Leading candidate</th>
+              <th scope="col" role="columnheader" class="c-pct">Leader's share</th>
+              <th scope="col" role="columnheader" class="c-margin">Lead over runner-up</th>
+              <th scope="col" role="columnheader" class="c-rep">Polls reporting</th>
+            </tr>
+          </thead>
+          <tbody id="ward-rows" role="rowgroup"></tbody>
+        </table>
+      </div>
+      <p id="table-empty" class="hint" hidden>No wards match that search.</p>
+    </section>
+
+    <footer class="foot">
+      <p>Unofficial results from the <a href="https://www.toronto.ca/city-government/elections/election-results-reports/election-results/live-results-information-for-media/">City of Toronto media results feed</a>, checked at most once a minute. Official results are certified by the City Clerk after election night. Ward boundaries: <a href="https://open.toronto.ca/dataset/city-wards/">Toronto Open Data, City Wards</a>. Map tiles © Esri, HERE, Garmin, © OpenStreetMap contributors. All times Eastern (ET).</p>
+      <details class="more">
+        <summary class="btn btn-ghost">What do these numbers mean?</summary>
+        <ul>
+          <li><b>Polls reporting</b>: voting subdivisions whose counts the City has received, out of 1,431 for Mayor.</li>
+          <li><b>Share</b>: a candidate's votes divided by all votes counted so far for that race. On a ward card, the percentage next to the leader is the leader's share in that ward.</li>
+          <li><b>Margin</b>: votes (and percentage points) between first and second place right now.</li>
+          <li>Advance-vote results are released after polls close at 8 PM ET, so early totals can swing.</li>
+          <li>This page does not project a winner. It only shows what the City has counted.</li>
+        </ul>
+      </details>
+    </footer>
+  </main>
+
+  <div id="toaster-root" class="toaster-root"></div>
+  <div id="announcer" class="visually-hidden" role="status" aria-live="polite"></div>
+
+  <script defer src="/vendor/leaflet/leaflet.js"></script>
+  <script type="module" src="/vendor/sonner/toaster.js"></script>
+  <script defer src="/vendor/motion/motion.js"></script>
+  <script defer src="/vendor/d3/d3.min.js"></script>
+  <script defer src="/fluid.js"></script>
+  <script defer src="/charts.js"></script>
+  <script defer src="/app.js"></script>
+</body>
+</html>
